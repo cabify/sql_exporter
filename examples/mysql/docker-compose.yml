@@ -1,0 +1,32 @@
+# Please note all environment variables have default values defined in '.env' file
+# suitable for running acceptance tests in your local machine.
+version: '3.6'
+services:
+
+  mysql:
+    image: mysql/mysql-server:5.7
+    ports:
+      - 3306:3306
+    environment:
+      MYSQL_ROOT_HOST: "%"
+      MYSQL_LOG_CONSOLE: "true"
+      MYSQL_ROOT_PASSWORD: sosecure
+    healthcheck:
+      test: ["CMD", "mysqladmin" ,"ping", "-h", "mysql", "-u", "root", "-psosecure"]
+      interval: 5s
+      timeout: 20s
+      retries: 10
+
+  app:
+    image: sql_exporter:local
+    entrypoint: ["/bin/sql_exporter", "-config.file=/etc/sql_exporter/config.yml"]
+    ports:
+      - 9399:9399
+    environment:
+      EXPORTER_USERNAME: root
+      EXPORTER_PASSWORD: sosecure
+      EXPORTER_HOSTNAME: mysql
+    volumes:
+      # within `databases/alter/*.sql` there should
+      # be actual schema changes that differ from the initial seed
+      - ./files:/etc/sql_exporter

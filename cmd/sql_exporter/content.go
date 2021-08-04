@@ -35,6 +35,7 @@ const (
           <div class="navbar-header"><a href="/">Prometheus SQL Exporter</a></div>
           <div><a href="{{ .MetricsPath }}">Metrics</a></div>
           <div><a href="/config">Configuration</a></div>
+          <div><a href="/config/reload">Configuration reload</a></div>
           <div><a href="/debug/pprof">Profiling</a></div>
           <div><a href="{{ .DocsUrl }}">Help</a></div>
         </div>
@@ -96,6 +97,28 @@ func HomeHandlerFunc(metricsPath string) func(http.ResponseWriter, *http.Request
 // ConfigHandlerFunc is the HTTP handler for the `/config` page. It outputs the configuration marshaled in YAML format.
 func ConfigHandlerFunc(metricsPath string, exporter sql_exporter.Exporter) func(http.ResponseWriter, *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
+		config, err := exporter.Config().YAML()
+		if err != nil {
+			HandleError(err, metricsPath, w, r)
+			return
+		}
+		configTemplate.Execute(w, &tdata{
+			MetricsPath: metricsPath,
+			DocsUrl:     docsUrl,
+			Config:      string(config),
+		})
+	}
+}
+
+// ConfigReloadHandlerFunc is the HTTP handler for the `/config/reload` page. It reloads the configuration from the file system.
+func ConfigReloadHandlerFunc(metricsPath string, exporter sql_exporter.Exporter) func(http.ResponseWriter, *http.Request) {
+	return func(w http.ResponseWriter, r *http.Request) {
+		err := exporter.LoadConfig(false)
+		if err != nil {
+			HandleError(err, metricsPath, w, r)
+			return
+		}
+
 		config, err := exporter.Config().YAML()
 		if err != nil {
 			HandleError(err, metricsPath, w, r)
