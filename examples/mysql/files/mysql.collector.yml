@@ -1,0 +1,17 @@
+collector_name: mysql
+metrics:
+  - metric_name: sql_exporter_current_mysql_user_count
+    type: gauge
+    help: 'user count'
+    key_labels:
+      - user
+      - host
+    values:
+      - user_count
+    query: |
+        SELECT
+          user,
+          host,
+          1 AS user_count
+        FROM mysql.user
+        GROUP BY user, host;

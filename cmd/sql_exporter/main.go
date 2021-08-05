@@ -61,6 +61,7 @@ func main() {
 	http.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) { http.Error(w, "OK", http.StatusOK) })
 	http.HandleFunc("/", HomeHandlerFunc(*metricsPath))
 	http.HandleFunc("/config", ConfigHandlerFunc(*metricsPath, exporter))
+	http.HandleFunc("/config/reload", ConfigReloadHandlerFunc(*metricsPath, exporter))
 	http.Handle(*metricsPath, ExporterHandlerFor(exporter))
 	// Expose exporter metrics separately, for debugging purposes.
 	http.Handle("/sql_exporter_metrics", promhttp.Handler())

@@ -6,8 +6,8 @@ import (
 	"fmt"
 	"sync"
 
-	"github.com/nxcc/sql_exporter/config"
 	"github.com/golang/protobuf/proto"
+	"github.com/nxcc/sql_exporter/config"
 	"github.com/prometheus/client_golang/prometheus"
 	dto "github.com/prometheus/client_model/go"
 )
@@ -22,26 +22,47 @@ type Exporter interface {
 	WithContext(context.Context) Exporter
 	// Config returns the Exporter's underlying Config object.
 	Config() *config.Config
+	// LoadConfig reloads the Exporter's underlying Config object.
+	LoadConfig(fail bool) error
 }
 
 type exporter struct {
-	config  *config.Config
-	targets []Target
+	configLock *sync.RWMutex
+	configFile string
+	config     *config.Config
+	targets    []Target
 
 	ctx context.Context
 }
 
 // NewExporter returns a new Exporter with the provided config.
 func NewExporter(configFile string) (Exporter, error) {
-	c, err := config.Load(configFile)
+	exporter := &exporter{
+		configLock: new(sync.RWMutex),
+		configFile: configFile,
+		ctx:        context.Background(),
+	}
+	err := exporter.LoadConfig(true)
 	if err != nil {
 		return nil, err
+	}
+
+	return exporter, nil
+}
+
+func (e *exporter) LoadConfig(fail bool) error {
+	c, err := config.Load(e.configFile)
+	if err != nil {
+		if fail {
+			return err
+		}
+		return nil
 	}
 
 	// Override the DSN if requested (and in single target mode).
 	if *dsnOverride != "" {
 		if len(c.Jobs) > 0 {
-			return nil, fmt.Errorf("The config.data-source-name flag (value %q) only applies in single target mode", *dsnOverride)
+			return fmt.Errorf("The config.data-source-name flag (value %q) only applies in single target mode", *dsnOverride)
 		} else {
 			c.Target.DSN = config.Secret(*dsnOverride)
 		}
@@ -51,7 +72,10 @@ func NewExporter(configFile string) (Exporter, error) {
 	if c.Target != nil {
 		target, err := NewTarget("", "", string(c.Target.DSN), c.Target.Collectors(), nil, c.Globals)
 		if err != nil {
-			return nil, err
+			if fail {
+				return err
+			}
+			return nil
 		}
 		targets = []Target{target}
 	} else {
@@ -59,24 +83,29 @@ func NewExporter(configFile string) (Exporter, error) {
 		for _, jc := range c.Jobs {
 			job, err := NewJob(jc, c.Globals)
 			if err != nil {
-				return nil, err
+				if fail {
+					return err
+				}
+				return nil
 			}
 			targets = append(targets, job.Targets()...)
 		}
 	}
 
-	return &exporter{
-		config:  c,
-		targets: targets,
-		ctx:     context.Background(),
-	}, nil
+	e.configLock.Lock()
+	e.config = c
+	e.targets = targets
+	e.configLock.Unlock()
+
+	return nil
 }
 
 func (e *exporter) WithContext(ctx context.Context) Exporter {
 	return &exporter{
-		config:  e.config,
-		targets: e.targets,
-		ctx:     ctx,
+		configFile: e.configFile,
+		config:     e.config,
+		targets:    e.targets,
+		ctx:        ctx,
 	}
 }
 
@@ -146,5 +175,8 @@ func (e *exporter) Gather() ([]*dto.MetricFamily, error) {
 
 // Config implements Exporter.
 func (e *exporter) Config() *config.Config {
+	e.configLock.RLock()
+	defer e.configLock.RUnlock()
+
 	return e.config
 }
